@@ -4,6 +4,7 @@ import asyncio
 import os
 import random
 from pathlib import Path
+from urllib.parse import quote_plus
 
 from playwright.async_api import async_playwright
 from playwright.async_api import TimeoutError as PlaywrightTimeout
@@ -54,8 +55,10 @@ class YouratorAdapter(JobSourceAdapter):
         # Simulate human browsing pace
         await asyncio.sleep(random.uniform(2.0, 4.0))
 
-        # SPA only passes `term=` to the backend API; tag_ids[] is ignored
-        browse_url = f"https://www.yourator.co/jobs?term={keyword}&page={page}"
+        browse_url = (
+            f"https://www.yourator.co/jobs"
+            f"?sort=most_related&term[]={quote_plus(keyword)}&page={page}"
+        )
 
         _PROFILE_DIR.mkdir(parents=True, exist_ok=True)
         chrome_cookies = _chrome_yourator_cookies()
@@ -77,7 +80,7 @@ class YouratorAdapter(JobSourceAdapter):
                 async with pg.expect_response(
                     lambda r: (
                         _JOBS_API_PATH in r.url
-                        and "term=" in r.url
+                        and ("term%5B%5D=" in r.url or "term[]=" in r.url)
                         and r.status == 200
                     ),
                     timeout=self._timeout_ms,
