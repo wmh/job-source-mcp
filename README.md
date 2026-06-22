@@ -5,6 +5,7 @@ MCP server that searches job listings from Taiwanese job boards and returns norm
 **Supported sources:**
 - [104](https://www.104.com.tw) — uses `curl_cffi` Chrome TLS impersonation; no login required
 - [Yourator](https://www.yourator.co) — uses Playwright headless browser; no login required
+- [CakeResume](https://www.cakeresume.com) — uses `curl_cffi` Chrome TLS impersonation; no login required
 
 ## Installation
 
@@ -44,11 +45,11 @@ Health check. Returns `{"ok": true}`.
 
 ### `session_status`
 
-Returns readiness of each source. Both sources work without login.
+Returns readiness of each source. All sources work without login.
 
 ### `search_jobs`
 
-Search job listings across one or both sources.
+Search job listings across one or more sources.
 
 ```json
 {
@@ -60,7 +61,7 @@ Search job listings across one or both sources.
 }
 ```
 
-`source` accepts: `"all"`, `"104"`, `"yourator"`.
+`source` accepts: `"all"`, `"104"`, `"yourator"`, `"cakeresume"`.
 
 **Response:**
 
@@ -95,6 +96,8 @@ Search job listings across one or both sources.
 
 If `browser-cookie3` is installed, Yourator also injects cookies from your local Chrome profile, which may improve result relevance for logged-in users.
 
+**CakeResume** — Fetches the search results page `https://www.cakeresume.com/jobs?q=<keyword>` (filtered to `zh-TW`) with `curl_cffi` using `impersonate="chrome110"`, then parses the embedded Next.js `__NEXT_DATA__` JSON blob to extract listings. No login or session cookie required. CakeResume caps each page at ~10 results. Returned `url` uses the `cakeresume.com/jobs/<slug>` path; the canonical clickable form is `cake.me/companies/<company-slug>/jobs/<slug>`.
+
 ## Configuration
 
 | Environment variable | Default | Description |
@@ -103,7 +106,7 @@ If `browser-cookie3` is installed, Yourator also injects cookies from your local
 
 ## Rate limiting
 
-Both adapters include a random delay (1.5–4 s) per request to simulate human browsing speed. When searching multiple keywords, call `search_jobs` sequentially rather than in parallel.
+All adapters include a random delay (1.5–4 s) per request to simulate human browsing speed. When searching multiple keywords, call `search_jobs` sequentially rather than in parallel.
 
 ## License
 
