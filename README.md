@@ -6,6 +6,8 @@ MCP server that searches job listings from Taiwanese job boards and returns norm
 - [104](https://www.104.com.tw) — uses `curl_cffi` Chrome TLS impersonation; no login required
 - [Yourator](https://www.yourator.co) — uses Playwright headless browser; no login required
 - [CakeResume](https://www.cakeresume.com) — uses `curl_cffi` Chrome TLS impersonation; no login required
+- [LinkedIn](https://www.linkedin.com/jobs) — uses the public guest job-search API via `curl_cffi`; no login required
+- [Meet.jobs](https://meet.jobs) — uses `curl_cffi` Chrome TLS impersonation; no login required
 
 ## Installation
 
@@ -61,7 +63,7 @@ Search job listings across one or more sources.
 }
 ```
 
-`source` accepts: `"all"`, `"104"`, `"yourator"`, `"cakeresume"`.
+`source` accepts: `"all"`, `"104"`, `"yourator"`, `"cakeresume"`, `"linkedin"`, `"meetjobs"`.
 
 **Response:**
 
@@ -84,9 +86,12 @@ Search job listings across one or more sources.
       "description": "..."
     }
   ],
+  "rate_limited": [],
   "errors": []
 }
 ```
+
+`rate_limited` lists any source that returned `HTTP 429` even after backing off (each entry: `{"source", "retry_after"}`). It exists so a throttled source is never confused with one that simply found nothing: if `count` is `0` **and** `rate_limited` is empty, the search genuinely matched no jobs; if a source appears in `rate_limited`, its `0` results mean "couldn't fetch", not "no matches". Rate-limited sources also appear in `errors` with `"type": "rate_limited"` (other failures use `"type": "error"`).
 
 ## How it works
 
@@ -98,6 +103,10 @@ If `browser-cookie3` is installed, Yourator also injects cookies from your local
 
 **CakeResume** — Fetches the search results page `https://www.cakeresume.com/jobs?q=<keyword>` (filtered to `zh-TW`) with `curl_cffi` using `impersonate="chrome110"`, then parses the embedded Next.js `__NEXT_DATA__` JSON blob to extract listings. No login or session cookie required. CakeResume caps each page at ~10 results. Returned `url` uses the `cakeresume.com/jobs/<slug>` path; the canonical clickable form is `cake.me/companies/<company-slug>/jobs/<slug>`.
 
+**LinkedIn** — Calls the public guest job-search endpoint `https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search` with `curl_cffi` (`impersonate="chrome110"`) and parses the returned HTML job cards with BeautifulSoup. No login or session cookie required. Pagination uses an offset (`start = (page - 1) * 10`); each request yields ~10 cards. When `location` is omitted it defaults to `Taiwan`. Guest cards do not include a job description (left empty) and rarely include salary. LinkedIn is the most rate-limit-sensitive source, so requests use an **adaptive low-frequency limiter** (see Rate limiting).
+
+**Meet.jobs** — Fetches the SSR search page `https://meet.jobs/zh-TW/jobs?q=<keyword>` with `curl_cffi` (`impersonate="chrome110"`) and parses the `div.job-card` elements with BeautifulSoup. No login or session cookie required. Description is left empty.
+
 ## Configuration
 
 | Environment variable | Default | Description |
@@ -106,7 +115,11 @@ If `browser-cookie3` is installed, Yourator also injects cookies from your local
 
 ## Rate limiting
 
-All adapters include a random delay (1.5–4 s) per request to simulate human browsing speed. When searching multiple keywords, call `search_jobs` sequentially rather than in parallel.
+The 104, Yourator, and CakeResume adapters include a random delay (1.5–4 s) per request to simulate human browsing speed.
+
+LinkedIn and Meet.jobs use an **adaptive process-wide rate limiter** (`job_source_mcp/throttle.py`). It serializes outbound requests with a minimum spacing (LinkedIn ≥ 8 s, Meet.jobs ≥ 4 s, plus jitter) so the server never calls these APIs at high frequency. When a source returns `HTTP 429`, the limiter **escalates the interval and keeps it escalated** (doubling, up to 120 s for LinkedIn) and backs off before a single retry — the response to throttling is to call *less often*, not to retry harder. The interval only relaxes gradually after sustained success.
+
+When searching multiple keywords, call `search_jobs` sequentially rather than in parallel.
 
 ## License
 
