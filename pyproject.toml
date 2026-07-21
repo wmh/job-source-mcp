@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "job-source-mcp"
 version = "0.1.0"
-description = "MCP server for aggregating job listings from 104, Yourator, CakeResume, LinkedIn, and Meet.jobs."
+description = "MCP server for aggregating job listings from 104, Yourator, CakeResume, and LinkedIn."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

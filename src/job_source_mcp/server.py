@@ -7,7 +7,6 @@ from mcp.server.fastmcp import FastMCP
 from job_source_mcp.adapters.cakeresume import CakeResumeAdapter
 from job_source_mcp.adapters.jobs104 import Jobs104Adapter
 from job_source_mcp.adapters.linkedin import LinkedInAdapter
-from job_source_mcp.adapters.meetjobs import MeetJobsAdapter
 from job_source_mcp.adapters.yourator import YouratorAdapter
 from job_source_mcp.exceptions import RateLimitedError
 
@@ -30,10 +29,6 @@ def _adapter_linkedin() -> LinkedInAdapter:
     return LinkedInAdapter()
 
 
-def _adapter_meetjobs() -> MeetJobsAdapter:
-    return MeetJobsAdapter()
-
-
 @mcp.tool()
 def ping() -> dict:
     return {"ok": True, "server": "job-source-mcp"}
@@ -47,22 +42,19 @@ def session_status() -> dict:
         "yourator": True,
         "cakeresume": True,
         "linkedin": True,
-        "meetjobs": True,
-        "note": "No login required. 104, CakeResume, LinkedIn, and Meet.jobs use curl_cffi Chrome impersonation; Yourator uses Playwright headless browser. LinkedIn and Meet.jobs are rate-limited with adaptive low-frequency throttling; when throttled they surface in search_jobs' 'rate_limited' field rather than returning an empty result, so 0 jobs with an empty 'rate_limited' means a genuinely empty search.",
+        "note": "No login required. 104, CakeResume, and LinkedIn use curl_cffi Chrome impersonation; Yourator uses Playwright headless browser. LinkedIn is rate-limited with adaptive low-frequency throttling; when throttled it surfaces in search_jobs' 'rate_limited' field rather than returning an empty result, so 0 jobs with an empty 'rate_limited' means a genuinely empty search. Meet.jobs was removed: the service permanently shut down on 2026-06-30.",
     }
 
 
 @mcp.tool()
 async def search_jobs(
     keyword: str,
-    source: Literal[
-        "all", "104", "yourator", "cakeresume", "linkedin", "meetjobs"
-    ] = "all",
+    source: Literal["all", "104", "yourator", "cakeresume", "linkedin"] = "all",
     page: int = 1,
     limit: int = 20,
     location: str = "",
 ) -> dict:
-    """Search job listings from 104, Yourator, CakeResume, LinkedIn, and/or Meet.jobs."""
+    """Search job listings from 104, Yourator, CakeResume, and/or LinkedIn."""
     page = max(page, 1)
     limit = min(max(limit, 1), 50)
     normalized_location = location.strip() or None
@@ -76,8 +68,6 @@ async def search_jobs(
         adapters.append(_adapter_cakeresume())
     if source in ("all", "linkedin"):
         adapters.append(_adapter_linkedin())
-    if source in ("all", "meetjobs"):
-        adapters.append(_adapter_meetjobs())
 
     all_jobs = []
     errors: list[dict] = []
