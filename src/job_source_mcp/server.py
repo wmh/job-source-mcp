@@ -1,75 +1,64 @@
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping
 from typing import Literal
 
 from mcp.server.fastmcp import FastMCP
 
+from job_source_mcp import __version__
+from job_source_mcp.adapters.base import JobSourceAdapter
 from job_source_mcp.adapters.cakeresume import CakeResumeAdapter
 from job_source_mcp.adapters.jobs104 import Jobs104Adapter
 from job_source_mcp.adapters.linkedin import LinkedInAdapter
 from job_source_mcp.adapters.yourator import YouratorAdapter
 from job_source_mcp.exceptions import RateLimitedError
 
-mcp = FastMCP("job-source-mcp")
+Source = Literal["all", "104", "yourator", "cakeresume", "linkedin"]
+
+# Ordered so `source="all"` always queries sources in this sequence. The keys
+# double as the accepted values for the `source` tool parameter.
+ADAPTER_FACTORIES: dict[str, Callable[[], JobSourceAdapter]] = {
+    "104": Jobs104Adapter,
+    "yourator": YouratorAdapter,
+    "cakeresume": CakeResumeAdapter,
+    "linkedin": LinkedInAdapter,
+}
 
 
-def _adapter_104() -> Jobs104Adapter:
-    return Jobs104Adapter()
+def _default_registry() -> dict[str, JobSourceAdapter]:
+    return {name: factory() for name, factory in ADAPTER_FACTORIES.items()}
 
 
-def _adapter_yourator() -> YouratorAdapter:
-    return YouratorAdapter()
+def _select(
+    registry: Mapping[str, JobSourceAdapter], source: str
+) -> list[JobSourceAdapter]:
+    if source == "all":
+        return list(registry.values())
+    adapter = registry.get(source)
+    return [adapter] if adapter is not None else []
 
 
-def _adapter_cakeresume() -> CakeResumeAdapter:
-    return CakeResumeAdapter()
-
-
-def _adapter_linkedin() -> LinkedInAdapter:
-    return LinkedInAdapter()
-
-
-@mcp.tool()
-def ping() -> dict:
-    return {"ok": True, "server": "job-source-mcp"}
-
-
-@mcp.tool()
-def session_status() -> dict:
-    """Check readiness of each source. None require login."""
-    return {
-        "104": True,
-        "yourator": True,
-        "cakeresume": True,
-        "linkedin": True,
-        "note": "No login required. 104, CakeResume, and LinkedIn use curl_cffi Chrome impersonation; Yourator uses Playwright headless browser. LinkedIn is rate-limited with adaptive low-frequency throttling; when throttled it surfaces in search_jobs' 'rate_limited' field rather than returning an empty result, so 0 jobs with an empty 'rate_limited' means a genuinely empty search. Meet.jobs was removed: the service permanently shut down on 2026-06-30.",
-    }
-
-
-@mcp.tool()
-async def search_jobs(
+async def run_search(
+    registry: Mapping[str, JobSourceAdapter],
     keyword: str,
-    source: Literal["all", "104", "yourator", "cakeresume", "linkedin"] = "all",
+    source: str = "all",
     page: int = 1,
     limit: int = 20,
-    location: str = "",
+    location: str | None = None,
 ) -> dict:
-    """Search job listings from 104, Yourator, CakeResume, and/or LinkedIn."""
+    """Core search logic, independent of MCP wiring.
+
+    Kept as a plain function (taking an injectable adapter registry) so the
+    rate-limited-vs-empty distinction can be unit tested without spinning up a
+    server or hitting the network.
+    """
     page = max(page, 1)
     limit = min(max(limit, 1), 50)
-    normalized_location = location.strip() or None
+    normalized_location = (location or "").strip() or None
 
-    adapters = []
-    if source in ("all", "104"):
-        adapters.append(_adapter_104())
-    if source in ("all", "yourator"):
-        adapters.append(_adapter_yourator())
-    if source in ("all", "cakeresume"):
-        adapters.append(_adapter_cakeresume())
-    if source in ("all", "linkedin"):
-        adapters.append(_adapter_linkedin())
+    adapters = _select(registry, source)
 
-    all_jobs = []
+    all_jobs: list[dict] = []
     errors: list[dict] = []
     rate_limited: list[dict] = []
     for adapter in adapters:
@@ -106,8 +95,56 @@ async def search_jobs(
     }
 
 
+def create_server(
+    registry: Mapping[str, JobSourceAdapter] | None = None,
+) -> FastMCP:
+    """Build the MCP server. Pass `registry` to inject adapters (e.g. in tests)."""
+    mcp = FastMCP("job-source-mcp")
+    # FastMCP doesn't forward a version to the underlying MCP server, so set it
+    # here to keep the initialize handshake reporting our single-source version.
+    mcp._mcp_server.version = __version__
+    adapters: Mapping[str, JobSourceAdapter] = (
+        registry if registry is not None else _default_registry()
+    )
+
+    @mcp.tool()
+    def ping() -> dict:
+        return {"ok": True, "server": "job-source-mcp"}
+
+    @mcp.tool()
+    def session_status() -> dict:
+        """Check readiness of each source. None require login."""
+        return {
+            "104": True,
+            "yourator": True,
+            "cakeresume": True,
+            "linkedin": True,
+            "note": "No login required. 104, CakeResume, and LinkedIn use curl_cffi Chrome impersonation; Yourator uses Playwright headless browser. LinkedIn is rate-limited with adaptive low-frequency throttling; when throttled it surfaces in search_jobs' 'rate_limited' field rather than returning an empty result, so 0 jobs with an empty 'rate_limited' means a genuinely empty search. Meet.jobs was removed: the service permanently shut down on 2026-06-30.",  # noqa: E501
+        }
+
+    @mcp.tool()
+    async def search_jobs(
+        keyword: str,
+        source: Source = "all",
+        page: int = 1,
+        limit: int = 20,
+        location: str = "",
+    ) -> dict:
+        """Search job listings from 104, Yourator, CakeResume, and/or LinkedIn."""
+        return await run_search(
+            adapters,
+            keyword=keyword,
+            source=source,
+            page=page,
+            limit=limit,
+            location=location,
+        )
+
+    return mcp
+
+
 def main() -> None:
-    mcp.run(transport="stdio")
+    create_server().run(transport="stdio")
 
 
 if __name__ == "__main__":

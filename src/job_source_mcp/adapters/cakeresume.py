@@ -24,7 +24,9 @@ def _format_salary(salary: dict | None) -> str:
     lo = salary.get("min") or ""
     hi = salary.get("max") or ""
     sal_type = salary.get("type", "")
-    suffix = "/月" if sal_type == "per_month" else "/年" if sal_type == "per_year" else ""
+    suffix = (
+        "/月" if sal_type == "per_month" else "/年" if sal_type == "per_year" else ""
+    )
     try:
         lo_i, hi_i = int(lo or 0), int(hi or 0)
     except ValueError:

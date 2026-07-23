@@ -122,6 +122,21 @@ LinkedIn uses an **adaptive process-wide rate limiter** (`job_source_mcp/throttl
 
 When searching multiple keywords, call `search_jobs` sequentially rather than in parallel.
 
+## Development
+
+Install with the dev extras, then run the linter and tests:
+
+```bash
+pip install -e ".[dev]"
+ruff check .        # lint
+pytest              # tests (no network access required)
+```
+
+The test suite mocks the network layer (`curl_cffi` sessions) and drives the
+adapters' parsers with fixtures, so it runs offline in well under a second. CI
+(`.github/workflows/ci.yml`) runs the same `ruff check` + `pytest` across Python
+3.11–3.13 on every push and pull request.
+
 ## License
 
 [MIT](LICENSE)

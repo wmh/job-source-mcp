@@ -6,8 +6,8 @@ import random
 from pathlib import Path
 from urllib.parse import quote_plus
 
-from playwright.async_api import async_playwright
 from playwright.async_api import TimeoutError as PlaywrightTimeout
+from playwright.async_api import async_playwright
 
 from job_source_mcp.adapters.base import JobSourceAdapter
 from job_source_mcp.models import JobListing
@@ -85,7 +85,11 @@ class YouratorAdapter(JobSourceAdapter):
                     ),
                     timeout=self._timeout_ms,
                 ) as response_info:
-                    await pg.goto(browse_url, wait_until="domcontentloaded", timeout=self._timeout_ms)
+                    await pg.goto(
+                        browse_url,
+                        wait_until="domcontentloaded",
+                        timeout=self._timeout_ms,
+                    )
                 response = await response_info.value
                 data = await response.json()
             except PlaywrightTimeout:

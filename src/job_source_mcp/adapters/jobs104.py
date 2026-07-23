@@ -42,7 +42,9 @@ class Jobs104Adapter(JobSourceAdapter):
         }
 
         async with AsyncSession(impersonate="chrome110") as s:
-            resp = await s.get(_API_URL, params=params, headers=headers, timeout=self._timeout)
+            resp = await s.get(
+                _API_URL, params=params, headers=headers, timeout=self._timeout
+            )
         resp.raise_for_status()
         data = resp.json()
 
@@ -55,7 +57,11 @@ class Jobs104Adapter(JobSourceAdapter):
             link = (item.get("link") or {}).get("job", "")
             salary_low = item.get("salaryLow", 0)
             salary_high = item.get("salaryHigh", 0)
-            salary = f"{salary_low:,}–{salary_high:,}" if salary_low and salary_high else ""
+            salary = (
+                f"{salary_low:,}–{salary_high:,}"
+                if salary_low and salary_high
+                else ""
+            )
 
             results.append(
                 JobListing(
@@ -67,7 +73,11 @@ class Jobs104Adapter(JobSourceAdapter):
                     salary=salary,
                     url=link,
                     posted_at=item.get("appearDate", ""),
-                    tags=[t if isinstance(t, str) else t.get("name", "") for t in (item.get("tags") or []) if t],
+                    tags=[
+                        t if isinstance(t, str) else t.get("name", "")
+                        for t in (item.get("tags") or [])
+                        if t
+                    ],
                     description=item.get("description", ""),
                 )
             )
